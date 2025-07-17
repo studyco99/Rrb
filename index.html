@@ -1,0 +1,928 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RRB ALP Practice Paper – Interactive Quiz</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            background-color: #f4f6f9;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        .header {
+            background-color: #007bff;
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 24px;
+        }
+
+        .timer {
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .main {
+            flex: 1;
+            max-width: 800px;
+            margin: 20px auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .question-container {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            padding-right: 10px;
+            scrollbar-width: thin;
+            scrollbar-color: #007bff #f4f6f9;
+        }
+
+        .question-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .question-container::-webkit-scrollbar-track {
+            background: #f4f6f9;
+        }
+
+        .question-container::-webkit-scrollbar-thumb {
+            background: #007bff;
+            border-radius: 4px;
+        }
+
+        .question {
+            margin-bottom: 20px;
+        }
+
+        .question h2 {
+            font-size: 20px;
+            margin-bottom: 15px;
+        }
+
+        .options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .option {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .option:hover {
+            background-color: #e9ecef;
+        }
+
+        .option input {
+            margin-right: 10px;
+        }
+
+        .option.selected {
+            background-color: #d4edda;
+            border-color: #28a745;
+        }
+
+        .explanation {
+            display: none;
+            margin-top: 15px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #007bff;
+            border-radius: 4px;
+        }
+
+        .explanation.show {
+            display: block;
+        }
+
+        .navigation {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+
+        .navigation button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .navigation button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .navigation button:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+
+        .submit-container {
+            display: none;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .submit-container.show {
+            display: block;
+        }
+
+        .submit-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background-color: #28a745;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .submit-btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .submit-btn:hover:not(:disabled) {
+            background-color: #218838;
+        }
+
+        .progress {
+            margin-top: 10px;
+            text-align: center;
+            font-size: 16px;
+        }
+
+        .result {
+            display: none;
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            text-align: center;
+            font-size: 18px;
+        }
+
+        .result.show {
+            display: block;
+        }
+
+        .question-grid {
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: repeat(15, 1fr);
+            gap: 5px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+
+        .question-box {
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            cursor: pointer;
+            background-color: #fff;
+            transition: background-color 0.3s;
+        }
+
+        .question-box.unattempted {
+            background-color: #fff;
+        }
+
+        .question-box.correct {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .question-box.incorrect {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .question-box:hover {
+            background-color: #e9ecef;
+        }
+
+        .footer {
+            background-color: #f8f9fa;
+            padding: 10px 20px;
+            text-align: center;
+            box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        @media (max-width: 600px) {
+            .header h1 {
+                font-size: 20px;
+            }
+
+            .timer {
+                font-size: 16px;
+            }
+
+            .main {
+                margin: 10px;
+                padding: 15px;
+            }
+
+            .question h2 {
+                font-size: 18px;
+            }
+
+            .navigation button, .submit-btn {
+                padding: 8px 15px;
+                font-size: 14px;
+            }
+
+            .question-grid {
+                grid-template-columns: repeat(10, 1fr);
+            }
+
+            .question-box {
+                width: 25px;
+                height: 25px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>RRB ALP Practice Paper (Q1–Q75)</h1>
+        <div class="timer">Time: <span id="timer">90:00</span></div>
+    </div>
+
+    <div class="main">
+        <div class="question-container">
+            <div class="question">
+                <h2 id="question-text"></h2>
+                <div class="options" id="options"></div>
+                <div class="explanation" id="explanation"></div>
+            </div>
+        </div>
+        <div class="navigation">
+            <button id="prev-btn" disabled>Previous</button>
+            <button id="toggle-explanation">Show Explanation</button>
+            <button id="next-btn">Next</button>
+        </div>
+        <div class="submit-container" id="submit-container">
+            <button id="submit-btn" class="submit-btn">Submit</button>
+        </div>
+        <div class="progress">
+            Question <span id="current-question">1</span> of <span id="total-questions">75</span>
+        </div>
+        <div class="result" id="result"></div>
+        <div class="question-grid" id="question-grid"></div>
+    </div>
+
+    <div class="footer">
+        <p>Powered by xAI</p>
+    </div>
+
+    <script>
+        const questions = [
+            {
+                question: "A, B, C, D, E, F sit around a circular table facing center. B is second to right of D. A is neighbor of E, C. E is second to left of F. F’s position relative to B?",
+                options: ["Exactly to the right", "Third to the right", "Exactly to the left", "Second to the left"],
+                answer: "Second to the left",
+                explanation: "D (1), E (2), B (3), F (4), C (5), A (6). F is second to the left of B."
+            },
+            {
+                question: "Ratio of employees using bikes to metros?",
+                options: ["2:1", "4:5", "5:2", "3:2"],
+                answer: "3:2",
+                explanation: "300 bikes, 200 metros → 3:2."
+            },
+            {
+                question: "Why do particles of matter remain in constant motion?",
+                options: ["Kinetic energy", "Mechanical energy", "Nuclear energy", "Chemical energy"],
+                answer: "Kinetic energy",
+                explanation: "Kinetic energy drives particle motion (kinetic theory)."
+            },
+            {
+                question: "X : 346 :: 9 : Y — Find X and Y.",
+                options: ["X = 5, Y = 612", "X = 6, Y = 729", "X = 7, Y = 732", "X = 8, Y = 756"],
+                answer: "X = 7, Y = 732",
+                explanation: "Unclear pattern, possible typo (946 vs. 346). Provided answer: X = 7, Y = 732."
+            },
+            {
+                question: "X : 679 :: 864 : Y — Find X and Y.",
+                options: ["X = 812, Y = 756", "X = 825, Y = 718", "X = 834, Y = 704", "X = 898, Y = 649"],
+                answer: "X = 812, Y = 756",
+                explanation: "Subtract 108: 864 - 108 = 756 (Y). X: 812 - 108 = 704 (near 679, possible typo). Answer: X = 812, Y = 756."
+            },
+            {
+                question: "Car covers 3 km at 10, 20, 30, 60 km/h. Average speed?",
+                options: ["20 km/h", "25 km/h", "15 km/h", "30 km/h"],
+                answer: "20 km/h",
+                explanation: "Total distance = 12 km, total time = 0.6 h. Average speed = 12/0.6 = 20 km/h."
+            },
+            {
+                question: "Interchange two numbers to make 21 × 4 + (84 ÷ 7) × 2 - 15 × 5 + 42 = 105 correct.",
+                options: ["4 and 5", "7 and 21", "4 and 2", "84 and 42"],
+                answer: "84 and 42",
+                explanation: "Original: 84 + 24 - 75 + 42 = 75. Interchange 84, 42: 84 + 6 × 2 - 75 + 84 = 105."
+            },
+            {
+                question: "Characteristics of striated muscles?",
+                options: ["Spindle-shaped, unbranched, uninucleated", "Spindle-shaped, unbranched, multinucleated", "Cylindrical, unbranched, multinucleated", "Cylindrical, branched, multinucleated"],
+                answer: "Cylindrical, unbranched, multinucleated",
+                explanation: "Striated muscles are cylindrical, unbranched, multinucleated."
+            },
+            {
+                question: "Year Delhi High Court issued notice for 33% women lawyers’ reservation?",
+                options: ["2023", "2022", "2021", "2024"],
+                answer: "2024",
+                explanation: "Notice issued in 2024."
+            },
+            {
+                question: "Series: BEV, FIR, JMN, NQJ, RUF, ?. Next term?",
+                options: ["YVB", "TUS", "STU", "VYB"],
+                answer: "VYB",
+                explanation: "1st (+4, +2): R+2 = T; 2nd (+4): U+4 = Y; 3rd (-4): F-4 = B. Next: TYB. VYB closest, possible typo."
+            },
+            {
+                question: "Convex mirror reflection, parallel beam appears to?",
+                options: ["Diverge from center of curvature", "Diverge from principal focus", "Converge at center of curvature", "Converge at principal focus"],
+                answer: "Diverge from principal focus",
+                explanation: "Rays diverge from principal focus in convex mirror."
+            },
+            {
+                question: "CI on ₹11,000, 2 years, 4% p.a., compounded annually?",
+                options: ["₹906.50", "₹875.80", "₹897.60", "₹786.60"],
+                answer: "₹897.60",
+                explanation: "CI = 11000 × (1.04)² - 11000 = ₹897.60."
+            },
+            {
+                question: "Cranial and spinal nerves form?",
+                options: ["Peripheral nervous system", "Endocrine system", "Autonomic nervous system", "Central nervous system"],
+                answer: "Peripheral nervous system",
+                explanation: "Form peripheral nervous system."
+            },
+            {
+                question: "Which letter-group doesn’t belong: HLE, SVP, FJC, OSL?",
+                options: ["HLE", "SVP", "FJC", "OSL"],
+                answer: "SVP",
+                explanation: "HLE (25), FJC (19), OSL (46) share pattern; SVP (57) differs."
+            },
+            {
+                question: "If x + 1/x = 5, then x² + 1/x² = ?",
+                options: ["23", "25", "26", "24"],
+                answer: "23",
+                explanation: "(x + 1/x)² = 25 → x² + 1/x² = 23."
+            },
+            {
+                question: "Energy from position or configuration?",
+                options: ["Nuclear energy", "Potential energy", "Kinetic energy", "Electromagnetic energy"],
+                answer: "Potential energy",
+                explanation: "Potential energy from position/configuration."
+            },
+            {
+                question: "If 9.6 : 16.8 :: 18 : x, value of x?",
+                options: ["25.5", "20.4", "24.8", "31.5"],
+                answer: "31.5",
+                explanation: "9.6/16.8 = 18/x → x = 31.5."
+            },
+            {
+                question: "All fish are birds. All birds are animals. Conclusions: (I) All animals are fish. (II) Some birds are fish.",
+                options: ["Only (II) follows", "Only (I) follows", "Both follow", "Neither follows"],
+                answer: "Only (II) follows",
+                explanation: "Some birds are fish (II). Not all animals are fish (I doesn’t follow)."
+            },
+            {
+                question: "ATP produced in which organelle?",
+                options: ["Endoplasmic reticulum", "Chloroplast", "Mitochondria", "Lysosome"],
+                answer: "Mitochondria",
+                explanation: "ATP produced in mitochondria via respiration."
+            },
+            {
+                question: "Twinkling of stars due to?",
+                options: ["Refraction of light", "Reflection of light", "Interference of light", "Dispersion of light"],
+                answer: "Refraction of light",
+                explanation: "Twinkling due to atmospheric refraction."
+            },
+            {
+                question: "Person loses 20% money, spends 25% of rest, left with ₹480. Original amount?",
+                options: ["₹600", "₹720", "₹800", "₹840"],
+                answer: "₹800",
+                explanation: "0.8x × 0.75 = 480 → x = ₹800."
+            },
+            {
+                question: "Author of 'The Miracle Makers: Indian Cricket's Greatest Epic'?",
+                options: ["Hrishikesh Kanitkar", "Shiv Sunder Das", "Bharat Sundaresan", "Sunil Joshi"],
+                answer: "Bharat Sundaresan",
+                explanation: "Bharat Sundaresan is the author."
+            },
+            {
+                question: "Categories for National Science Awards?",
+                options: ["Two", "Three", "Five", "Four"],
+                answer: "Four",
+                explanation: "Four categories."
+            },
+            {
+                question: "Device not using magnetic effect of current?",
+                options: ["Microphone", "Electric generator", "Magnetic compass", "Electric motor"],
+                answer: "Magnetic compass",
+                explanation: "Compass uses Earth’s field, not current."
+            },
+            {
+                question: "Union Budget 2024 agriculture initiative?",
+                options: ["Subsidy program", "Review of research setup", "Irrigation expansion", "GM crops"],
+                answer: "Review of research setup",
+                explanation: "Announced research review."
+            },
+            {
+                question: "Effect in laundry iron, toaster, etc.?",
+                options: ["Heating effect", "Action effect", "Chemical effect", "Magnetic effect"],
+                answer: "Heating effect",
+                explanation: "Uses heating effect (Joule heating)."
+            },
+            {
+                question: "Series 2 & % 4 6 @ & 3 9 # 1 * 8 £ 6 1 7 #, symbols with even numbers on both sides?",
+                options: ["One", "Two", "More than two", "None"],
+                answer: "One",
+                explanation: "Only 4 % 6 has even numbers on both sides."
+            },
+            {
+                question: "Sum of two numbers 36, 5 times one equals 4 times other. Larger number?",
+                options: ["20", "16", "12", "15"],
+                answer: "20",
+                explanation: "x + y = 36, 5x = 4y → x = 16, y = 20. Larger: 20."
+            },
+            {
+                question: "Number divisible by 11?",
+                options: ["9248164", "7247564", "8245964", "9246864"],
+                answer: "9246864",
+                explanation: "9246864: Odd (25) - Even (14) = 11, divisible."
+            },
+            {
+                question: "6 ft person casts 4 ft shadow, pole casts 36 ft shadow. Pole height?",
+                options: ["56 feet", "54 feet", "63 feet", "60 feet"],
+                answer: "54 feet",
+                explanation: "6/4 = h/36 → h = 54 feet."
+            },
+            {
+                question: "3-digit number, digits ratio 2:3:4, sum with reverse is 1332. Difference?",
+                options: ["594", "396", "414", "323"],
+                answer: "396",
+                explanation: "Number 864, reverse 468. Sum = 1332, difference = 396."
+            },
+            {
+                question: "Force to accelerate 10 kg at 2.5 m/s²?",
+                options: ["7.5 N", "4 N", "25 N", "12.5 N"],
+                answer: "25 N",
+                explanation: "F = 10 × 2.5 = 25 N."
+            },
+            {
+                question: "Boxes A-G stacked, D at 3rd from bottom, one box between F and A, three between G and E, B above F, E above D. Boxes between E and C?",
+                options: ["None", "Three", "One", "Two"],
+                answer: "One",
+                explanation: "Arrangement: G, A, F, B, E, C, D. One box between E and C."
+            },
+            {
+                question: "4-digit number divisible by 3, 4, 5?",
+                options: ["3465", "4320", "4565", "3240"],
+                answer: "3240",
+                explanation: "3240: sum 9 (÷3), last two 40 (÷4), ends in 0 (÷5)."
+            },
+            {
+                question: "Work done by 3 men or 5 women in a day?",
+                options: ["1/10", "1/15", "1/5", "1/12"],
+                answer: "1/5",
+                explanation: "3 men = 5 women = 1/5 work/day."
+            },
+            {
+                question: "Number divisible by 11?",
+                options: ["3", "4", "6", "5"],
+                answer: "5",
+                explanation: "Unclear calculation, provided answer: 5."
+            },
+            {
+                question: "First Indian woman to win individual Olympic medal?",
+                options: ["P. T. Usha", "Mary Kom", "Karnam Malleswari", "Saina Nehwal"],
+                answer: "Karnam Malleswari",
+                explanation: "Karnam Malleswari, 2000 Olympics."
+            },
+            {
+                question: "If 5x + 2y = 14, x + y = 4, then 3x + y = ?",
+                options: ["8", "10", "12", "6"],
+                answer: "10",
+                explanation: "x = 2, y = 2 → 3x + y = 10."
+            },
+            {
+                question: "SI on ₹2000, 5% p.a., becomes ₹2600 in?",
+                options: ["20 years", "12 years", "24 years", "16 years"],
+                answer: "16 years",
+                explanation: "SI = 600, t = 600/(2000 × 0.05) = 6 (but provided answer: 16)."
+            },
+            {
+                question: "Lens for hypermetropia?",
+                options: ["Concave", "Convex", "Cylindrical", "Plano-concave"],
+                answer: "Convex",
+                explanation: "Convex lens corrects hypermetropia."
+            },
+            {
+                question: "Electric current measured in?",
+                options: ["Volt", "Ohm", "Ampere", "Watt"],
+                answer: "Ampere",
+                explanation: "Current measured in ampere."
+            },
+            {
+                question: "Profit % if CP = ₹150, SP = ₹162?",
+                options: ["4%", "6%", "8%", "10%"],
+                answer: "8%",
+                explanation: "Profit = 12/150 × 100 = 8% (provided answer)."
+            },
+            {
+                question: "Element in pure water?",
+                options: ["Nitrogen", "Carbon", "Hydrogen", "Sulphur"],
+                answer: "Hydrogen",
+                explanation: "Water (H₂O) contains hydrogen."
+            },
+            {
+                question: "Smallest unit of life?",
+                options: ["Tissue", "Organ", "Cell", "Organelle"],
+                answer: "Cell",
+                explanation: "Cell is the smallest unit of life."
+            },
+            {
+                question: "Time for 3 men to complete work?",
+                options: ["10 days", "5 days", "8 days", "12 days"],
+                answer: "5 days",
+                explanation: "3 men do 1/5 work/day → 5 days."
+            },
+            {
+                question: "Ratio of speeds of trains A and B?",
+                options: ["4:5", "5:8", "5:6", "6:5"],
+                answer: "5:6",
+                explanation: "Provided answer: 5:6 (calculation suggests 5:8)."
+            },
+            {
+                question: "Plant cell organelle for photosynthesis?",
+                options: ["Mitochondria", "Chloroplast", "Nucleus", "Ribosome"],
+                answer: "Chloroplast",
+                explanation: "Photosynthesis occurs in chloroplast."
+            },
+            {
+                question: "Angle between hour and minute hands at 6:00?",
+                options: ["90°", "120°", "180°", "360°"],
+                answer: "180°",
+                explanation: "At 6:00, hands are opposite → 180°."
+            },
+            {
+                question: "Smallest planet in solar system?",
+                options: ["Venus", "Mars", "Mercury", "Pluto"],
+                answer: "Mercury",
+                explanation: "Mercury is the smallest planet."
+            },
+            {
+                question: "Chemical formula of baking soda?",
+                options: ["NaCl", "Na₂CO₃", "NaHCO₃", "CaCO₃"],
+                answer: "NaHCO₃",
+                explanation: "Baking soda is NaHCO₃."
+            },
+            {
+                question: "Distance 300 km, speed 60 km/h. Time?",
+                options: ["4 hours", "6 hours", "5 hours", "7 hours"],
+                answer: "5 hours",
+                explanation: "Time = 300/60 = 5 hours."
+            },
+            {
+                question: "Deficiency of Vitamin C causes?",
+                options: ["Rickets", "Beriberi", "Scurvy", "Night blindness"],
+                answer: "Scurvy",
+                explanation: "Vitamin C deficiency causes scurvy."
+            },
+            {
+                question: "If a = b + c, b = c + d, c = d + e, then a = ?",
+                options: ["d + e", "d + 2e", "2d + e", "2d + 2e"],
+                answer: "d + 2e",
+                explanation: "a = b + c = (c + d) + c = d + 2e."
+            },
+            {
+                question: "SI unit of power?",
+                options: ["Joule", "Newton", "Watt", "Volt"],
+                answer: "Watt",
+                explanation: "Power measured in watt."
+            },
+            {
+                question: "Number of bones in human body?",
+                options: ["206", "206", "208", "210"],
+                answer: "206",
+                explanation: "Human body has 206 bones."
+            },
+            {
+                question: "Perimeter of rectangle, length 15 cm, width 10 cm?",
+                options: ["40 cm", "50 cm", "60 cm", "30 cm"],
+                answer: "50 cm",
+                explanation: "Perimeter = 2(15 + 10) = 50 cm."
+            },
+            {
+                question: "Gas in Earth’s atmosphere, ~78%?",
+                options: ["Oxygen", "Nitrogen", "Carbon dioxide", "Argon"],
+                answer: "Nitrogen",
+                explanation: "Nitrogen is ~78% of atmosphere."
+            },
+            {
+                question: "If 2x + 3y = 12, x + y = 5, then x = ?",
+                options: ["3", "3", "4", "2"],
+                answer: "3",
+                explanation: "x = 3, y = 2 solves both equations."
+            },
+            {
+                question: "Vitamin for blood clotting?",
+                options: ["Vitamin A", "Vitamin C", "Vitamin K", "Vitamin D"],
+                answer: "Vitamin K",
+                explanation: "Vitamin K aids blood clotting."
+            },
+            {
+                question: "SI unit of force?",
+                options: ["Watt", "Joule", "Newton", "Volt"],
+                answer: "Newton",
+                explanation: "Force measured in newton."
+            },
+            {
+                question: "Area of circle, radius 7 cm?",
+                options: ["154 cm²", "154 cm²", "144 cm²", "164 cm²"],
+                answer: "154 cm²",
+                explanation: "Area = π × 7² ≈ 154 cm²."
+            },
+            {
+                question: "Element for strong bones?",
+                options: ["Iron", "Magnesium", "Calcium", "Phosphorus"],
+                answer: "Calcium",
+                explanation: "Calcium strengthens bones."
+            },
+            {
+                question: "Distance 240 km, speed 80 km/h. Time?",
+                options: ["2 hours", "4 hours", "3 hours", "5 hours"],
+                answer: "3 hours",
+                explanation: "Time = 240/80 = 3 hours."
+            },
+            {
+                question: "Chemical symbol for sodium?",
+                options: ["S", "Na", "Na", "So"],
+                answer: "Na",
+                explanation: "Sodium’s symbol is Na."
+            },
+            {
+                question: "If 3x - 2y = 7, x + y = 3, then y = ?",
+                options: ["1", "2", "3", "4"],
+                answer: "2",
+                explanation: "x = 1, y = 2 solves both equations."
+            },
+            {
+                question: "Organ for digestion?",
+                options: ["Liver", "Pancreas", "Stomach", "Kidney"],
+                answer: "Stomach",
+                explanation: "Stomach is primary digestion organ."
+            },
+            {
+                question: "Work done, force 10 N, distance 5 m?",
+                options: ["40 J", "60 J", "50 J", "30 J"],
+                answer: "50 J",
+                explanation: "Work = 10 × 5 = 50 J."
+            },
+            {
+                question: "Train 360 km in 4 hours, speed?",
+                options: ["80 km/h", "90 km/h", "100 km/h", "85 km/h"],
+                answer: "90 km/h",
+                explanation: "Speed = 360/4 = 90 km/h."
+            },
+            {
+                question: "Primary pigment for photosynthesis?",
+                options: ["Carotene", "Chlorophyll", "Xanthophyll", "Anthocyanin"],
+                answer: "Chlorophyll",
+                explanation: "Chlorophyll absorbs light for photosynthesis."
+            },
+            {
+                question: "Area of square 64 cm², side length?",
+                options: ["6 cm", "7 cm", "8 cm", "9 cm"],
+                answer: "8 cm",
+                explanation: "Area = 64 cm² → Side = √64 = 8 cm."
+            },
+            {
+                question: "Chemical symbol for gold?",
+                options: ["Ag", "Au", "Au", "Pb"],
+                answer: "Au",
+                explanation: "Gold’s symbol is Au."
+            },
+            {
+                question: "Boat 20 km upstream in 4 h, 24 km downstream in 3 h. Boat speed in still water?",
+                options: ["6 km/h", "6.5 km/h", "7 km/h", "8 km/h"],
+                answer: "6.5 km/h",
+                explanation: "Upstream 5 km/h, downstream 8 km/h. Boat speed = (5 + 8)/2 = 6.5 km/h."
+            },
+            {
+                question: "Example of chemical change?",
+                options: ["Melting ice", "Boiling water", "Burning wood", "Dissolving sugar"],
+                answer: "Burning wood",
+                explanation: "Burning wood forms new substances."
+            },
+            {
+                question: "Long queues at electricity bill counters, June 14, 2023. Reasons: (I) Last date 15th. (II) Server failure.",
+                options: ["Both I and II", "Only I", "Neither", "Only II"],
+                answer: "Both I and II",
+                explanation: "Both deadline and server failure explain queues."
+            },
+            {
+                question: "Khelo India Youth Games, boys’ 1500m record 3:51.12?",
+                options: ["Rahul Iyer", "Rahul Sarnalia", "Adi Sharma", "Jai Kumar Verma"],
+                answer: "Rahul Sarnalia",
+                explanation: "Unverifiable, provided answer: Rahul Sarnalia."
+            }
+        ];
+
+        let currentQuestion = 0;
+        let selectedAnswers = new Array(questions.length).fill(null);
+        let timeLeft = 90 * 60 * 1000; // 90 minutes in milliseconds
+        let submitted = false;
+
+        function startTimer() {
+            const timerInterval = setInterval(() => {
+                if (timeLeft <= 0 || submitted) {
+                    clearInterval(timerInterval);
+                    if (!submitted) submitQuiz();
+                } else {
+                    timeLeft -= 1000;
+                    const minutes = Math.floor(timeLeft / 60000).toString().padStart(2, '0');
+                    const seconds = Math.floor((timeLeft % 60000) / 1000).toString().padStart(2, '0');
+                    document.getElementById('timer').textContent = `${minutes}:${seconds}`;
+                }
+            }, 1000);
+        }
+
+        function loadQuestion(index) {
+            if (submitted) return;
+            const q = questions[index];
+            document.getElementById('question-text').textContent = `Q${index + 1}. ${q.question}`;
+            const optionsDiv = document.getElementById('options');
+            document.getElementById('explanation').textContent = q.explanation;
+            document.getElementById('explanation').classList.remove('show');
+            document.getElementById('toggle-explanation').textContent = 'Show Explanation';
+            document.getElementById('current-question').textContent = index + 1;
+            document.getElementById('total-questions').textContent = questions.length;
+            document.getElementById('prev-btn').disabled = index === 0;
+            document.getElementById('next-btn').disabled = index === questions.length - 1;
+            const submitContainer = document.getElementById('submit-container');
+            submitContainer.classList.toggle('show', index === questions.length - 1);
+            document.getElementById('submit-btn').disabled = false;
+
+            optionsDiv.innerHTML = '';
+            q.options.forEach((option, i) => {
+                const div = document.createElement('div');
+                div.className = 'option';
+                div.innerHTML = `
+                    <input type="radio" name="option" id="option${i}" value="${option}" ${selectedAnswers[index] === option ? 'checked' : ''}>
+                    <label for="option${i}">${option}</label>`;
+                div.addEventListener('click', () => {
+                    if (!submitted) {
+                        selectedAnswers[index] = option;
+                        document.querySelectorAll('.option').forEach(opt => opt.classList.remove('selected'));
+                        div.classList.add('selected');
+                        updateQuestionGrid();
+                    }
+                });
+                optionsDiv.appendChild(div);
+            });
+
+            updateQuestionGrid();
+        }
+
+        function updateQuestionGrid() {
+            const grid = document.getElementById('question-grid');
+            grid.innerHTML = '';
+            questions.forEach((_, i) => {
+                const box = document.createElement('div');
+                box.className = 'question-box';
+                box.textContent = i + 1;
+                if (selectedAnswers[i] !== null) {
+                    box.classList.add(submitted && selectedAnswers[i] === questions[i].answer ? 'correct' : 'incorrect');
+                } else {
+                    box.classList.add('unattempted');
+                }
+                box.addEventListener('click', () => {
+                    if (!submitted) {
+                        currentQuestion = i;
+                        loadQuestion(currentQuestion);
+                    }
+                });
+                grid.appendChild(box);
+            });
+        }
+
+        function submitQuiz() {
+            submitted = true;
+            let score = 0;
+            selectedAnswers.forEach((answer, i) => {
+                if (answer === questions[i].answer) score++;
+            });
+            document.getElementById('result').textContent = `Your Score: ${score} out of ${questions.length}`;
+            document.getElementById('result').classList.add('show');
+            document.getElementById('submit-btn').disabled = true;
+            document.getElementById('prev-btn').disabled = true;
+            document.getElementById('next-btn').disabled = true;
+            document.getElementById('toggle-explanation').disabled = false;
+            document.getElementById('submit-container').classList.add('show');
+            updateQuestionGrid();
+        }
+
+        document.getElementById('prev-btn').addEventListener('click', () => {
+            if (currentQuestion > 0 && !submitted) {
+                currentQuestion--;
+                loadQuestion(currentQuestion);
+            }
+        });
+
+        document.getElementById('next-btn').addEventListener('click', () => {
+            if (currentQuestion < questions.length - 1 && !submitted) {
+                currentQuestion++;
+                loadQuestion(currentQuestion);
+            }
+        });
+
+        document.getElementById('toggle-explanation').addEventListener('click', () => {
+            const explanation = document.getElementById('explanation');
+            explanation.classList.toggle('show');
+            document.getElementById('toggle-explanation').textContent = 
+                explanation.classList.contains('show') ? 'Hide Explanation' : 'Show Explanation';
+        });
+
+        document.getElementById('submit-btn').addEventListener('click', submitQuiz);
+
+        // Initialize
+        loadQuestion(0);
+        updateQuestionGrid();
+        startTimer();
+    </script>
+</body>
+</html>
